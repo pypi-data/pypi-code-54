@@ -1,0 +1,2 @@
+class PyWhoisException(Exception):
+    pass
