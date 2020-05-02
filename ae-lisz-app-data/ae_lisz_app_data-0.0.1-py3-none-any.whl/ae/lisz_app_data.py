@@ -1,0 +1,365 @@
+"""
+Lisz Demo App main app base (ae.gui_app) mixin class
+====================================================
+
+This module is used for to provide common data structures, functions and methods for the various
+demo applications based on the gui_app and the related GUI framework implementation portions
+(like e.g. ae.kivy_app and ae.enaml_app) of the ae namespace.
+"""
+from abc import abstractmethod, ABC
+from typing import Any, Dict, List, Optional
+
+from ae.gui_app import id_of_flow, flow_action, flow_key        # type: ignore
+
+
+__version__ = '0.0.1'
+
+
+FLOW_PATH_ROOT_ID = '<<<root>>>'     #: needed for flow path jumper
+FLOW_PATH_TEXT_SEP = " / "           #: flow path separator used by :func:`flow_path_text`
+
+HELP_TEXT = (
+    "Touch item name for to toggle selection.\n"
+    "\n"
+    "Filter un-/selected items with the eye\n"
+    "icons in the top right corner.\n"
+    "\n"
+    "Touch (-->) icon of item for to\n"
+    "display their sub-items.\n"
+    "\n"
+    "Edit focused item for to change name\n"
+    "or for to attach/remove a node.\n"
+    "\n"
+    "Change order by dragging item with the\n"
+    "rightmost icon.\n"
+)
+
+
+LiszItem = Dict[str, Any]               #: list item data (lid) type
+LiszNode = List[LiszItem]               #: node/list type
+
+
+def check_item_id(item_id: str) -> bool:
+    """ check if passed item id is valid.
+
+    :param item_id:     item id to check.
+    :return:            True if all characters in the pass item id are valid, else False.
+    """
+    return isinstance(item_id, str) and bool(item_id) \
+        and item_id != FLOW_PATH_ROOT_ID and FLOW_PATH_TEXT_SEP not in item_id
+
+
+class LiszDataMixin(ABC):
+    """ lisz data model - independent from used GUI framework. """
+    root_node: LiszNode             #: root of complete/full list data structure
+    current_node: LiszNode          #: currently selected/displayed node / sub list
+
+    # mixin shadow attributes - implemented by :class:`~ae.gui_app.MainAppBase`
+    flow_id: str                    #: current attr:`flow id <ae.gui_app.MainAppBase.flow_id>`
+    flow_path: List[str]            #: :attr:`flow path <ae.gui_app.MainAppBase.flow_path>` ref. current node
+    debug_level: int                #: :attr:`~AppBase.debug_level`
+
+    @abstractmethod
+    def change_app_state(self, state_name: str, new_value: Any, send_event: bool = True):
+        """ add debug sound on each state change/save. """
+
+    @abstractmethod
+    def flow_path_action(self, path_index: int = -1) -> str:
+        """ determine the action of the last/newest entry in the flow_path. """
+
+    @abstractmethod
+    def play_sound(self, sound_name: str):
+        """ play audio/sound file. """
+
+    def flow_key_text(self, flow_id: str, landscape: bool) -> str:
+        """ determine shortest possible text fragment of the passed flow key that is unique in the current node.
+
+        Used to display unique part of the key of the focused item/node.
+
+        :param flow_id:     flow id to get key to check from (pass the observed value to update GUI automatically,
+                            either self.app_state_flow_id or self.app_states['flow_id']).
+        :param landscape:   True if window has landscape shape (resulting in larger abbreviation). Pass the observed
+                            attribute, mostly situated in the framework_win (e.g. self.framework_win.landscape).
+        :return:            display text containing flow key.
+        """
+        if flow_action(flow_id) == 'focus':
+            key = flow_key(flow_id)
+            key_len = len(key)
+            id_len = 6 if landscape else 3
+            for lid in self.current_node:
+                lid_id = lid['id']
+                if lid_id != key:
+                    while lid_id.startswith(key[:id_len]) and id_len < key_len:
+                        id_len += 1
+            return f" ->{key[:id_len]}"
+        return f".{flow_id}" if self.debug_level else ""
+
+    def flow_path_lists(self):
+        """ determine nodes relative to the current flow path to quick-jump to from current list. """
+        def append_nodes(node):
+            """ recursively collect all available nodes (possible flow paths) """
+            for lid in node:
+                if 'node' in lid:
+                    deeper_flow_path.append(id_of_flow('enter', 'item', lid['id']))
+                    paths.append(self.flow_path_text(deeper_flow_path))
+                    append_nodes(lid['node'])
+                    deeper_flow_path.pop()
+
+        paths = [FLOW_PATH_ROOT_ID] if self.flow_path else list()
+        deep = 0
+        while deep < len(self.flow_path) and self.flow_path_action(deep) == 'enter':
+            deep += 1
+            paths.append(self.flow_path_text(self.flow_path[:deep]))
+
+        deeper_flow_path = self.flow_path[:deep]
+        append_nodes(self.current_node)
+
+        return paths
+
+    def flow_path_from_text(self, text: str) -> List[str]:
+        """ restore the full complete flow path from the shortened flow keys generated by :meth:`.flow_path_text`.
+
+        :param text:    flow path text - like returned by :meth:`~LiszDataMixin.flow_path_text`.
+        :return:        flow path list.
+        """
+        path_lid = None     # suppress Pycharm PyUnboundLocalVariable inspection warning
+        flow_path = list()
+        if text != FLOW_PATH_ROOT_ID:
+            node = self.root_node
+            for part in text.split(FLOW_PATH_TEXT_SEP):
+                for lid in node:
+                    if lid['id'].startswith(part) and 'node' in lid:
+                        part = lid['id']
+                        path_lid = lid
+                        break
+                flow_path.append(id_of_flow('enter', 'node', part))
+                node = path_lid['node']         # type: ignore   # mypy not supports recursive types see issue #731
+        return flow_path
+
+    def flow_path_text(self, flow_path: List[str], min_len: int = 3) -> str:
+        """ generate shortened display text from the passed flow path.
+
+        :param min_len:
+        :param flow_path:
+        :return:
+        """
+        path_lid = None     # suppress Pycharm PyUnboundLocalVariable inspection warning
+        shortened_ids = list()
+        node = self.root_node
+        for flow_id in flow_path:
+            if flow_action(flow_id) != 'enter':
+                break
+            id_len = min_len
+            node_id = flow_key(flow_id)
+            sub_id_len = len(node_id)
+            for lid in node:
+                if lid['id'] == node_id:
+                    assert 'node' in lid
+                    path_lid = lid
+                elif 'node' in lid:
+                    while lid['id'].startswith(node_id[:id_len]) and id_len < sub_id_len:
+                        id_len += 1
+
+            shortened_ids.append(node_id[:id_len])
+            node = path_lid['node']         # type: ignore   # mypy not supports recursive types see issue #731
+
+        return FLOW_PATH_TEXT_SEP.join(shortened_ids)
+
+    def flow_path_node(self, flow_path: List[str] = None) -> LiszNode:
+        """ determine the current node specified by the passed flow path.
+
+        :param flow_path:
+        :return:
+        """
+        if flow_path is None:
+            flow_path = self.flow_path
+        current_node = self.root_node
+        for flow_id in flow_path:
+            if flow_action(flow_id) != 'enter':
+                break
+            node_id = flow_key(flow_id)
+            current_node = self.item_by_id(node_id, searched_list=current_node)['node']
+        return current_node
+
+    def delete_item(self, item_id: str, node_only: bool):
+        """ delete either the complete item or the sub node of the item (identified by the passed item id).
+
+        :param item_id:         item id to identify the item/sub-node to be deleted.
+        :param node_only:       True if only delete the sub-node of the identified item, False for to delete the item.
+        """
+        lid = self.item_by_id(item_id)
+        if node_only:
+            lid.pop('node')
+        else:
+            self.current_node.remove(lid)
+            self.change_app_state('flow_id', id_of_flow('', ''), send_event=False)
+
+        self.play_sound('deleted')
+
+    def edit_validate(self, old_idx: int, new_id: str, want_list: bool) -> str:
+        """ validate the user changes after adding a new item or editing an existing item.
+
+        :param old_idx:         index in the current node of the edited item or -1 if a new item got edited.
+        :param new_id:          new/edited id string.
+        :param want_list:       True if the new/edited item will have a sub-node.
+        :return:                empty string on successful validation, else error string or
+                                `'request_delete_confirmation_for_item'` if the user has to confirm the deletion
+                                after the user wiped the item id string or
+                                `'request_delete_confirmation_for_node'` if the user has to confirm the
+                                removal of the sub-node.
+        """
+        if not check_item_id(new_id):
+            return f"invalid item name/id {new_id} containing '{FLOW_PATH_TEXT_SEP}' or is equal '{FLOW_PATH_ROOT_ID}'"
+
+        add_item = old_idx == -1
+        if not new_id:
+            # on empty id cancel edit if add_item, else request confirmation from user for item del
+            return "" if add_item else 'request_delete_confirmation_for_item'
+
+        new_idx = self.find_item_index(new_id)
+        if new_idx != -1 and (add_item or new_idx != old_idx):
+            return f"item id {new_id} exists already"
+
+        if add_item:                        # add new item
+            lid = dict(id=new_id)
+            if want_list:
+                lid['node'] = list()        # type: ignore   # mypy not supports recursive types see issue #731
+            self.current_node.insert(0, lid)
+
+        else:                               # edit item
+            lid = self.current_node[old_idx]
+            lid['id'] = new_id
+            if want_list != ('node' in lid):    # NOTE: != operator has lower priority than in operator
+                if want_list:
+                    lid['node'] = list()        # type: ignore   # mypy not supports recursive types see issue #731
+                elif lid['node']:       # let user confirm list deletion of non-empty lid['node']
+                    return 'request_delete_confirmation_for_node'
+                else:
+                    lid.pop('node')     # remove empty node
+
+        self.play_sound('added' if add_item else 'edited')
+
+        return ""
+
+    def filter_toggle(self, toggle_attr: str, invert_attr: str):
+        """ toggle the item filter and ensure that the inverted filter will be toggled to prevent both filters active.
+
+        :param toggle_attr:     filter for to toggle.
+        :param invert_attr:     inverted filter will be set to False if was True and toggled filter get changed to True.
+        """
+        filtering = not getattr(self, toggle_attr)
+        self.change_app_state(toggle_attr, filtering)
+        if filtering and getattr(self, invert_attr):
+            self.change_app_state(invert_attr, False)
+
+    def find_item_index(self, item_id: str, searched_list: Optional[LiszNode] = None) -> int:
+        """ determine list index of the passed item id in the searched list or in the current node.
+
+        :param item_id:         item id to find.
+        :param searched_list:   searched node. if not passed then the current node will be searched instead.
+        :return:                item list index in the searched list or -1 if item id was not found.
+        """
+        if searched_list is None:
+            searched_list = self.current_node
+        for list_idx, lid in enumerate(searched_list):
+            if lid['id'] == item_id:
+                return list_idx
+        return -1
+
+    def item_by_id(self, item_id: str, searched_list: Optional[LiszNode] = None) -> LiszItem:
+        """ search list item in either the passed or the current node.
+
+        :param item_id:         item id to find.
+        :param searched_list:   searched node. if not passed then the current node will be searched instead.
+        :return:                found item or empty dict with new/empty id if not found.
+        """
+        if searched_list is None:
+            searched_list = self.current_node
+        index = self.find_item_index(item_id, searched_list=searched_list)
+        if index != -1:
+            return searched_list[index]
+        return dict(id='')
+
+    def move_item(self, dragged_node: LiszNode, item_id: str, node_idx: int):
+        """ move item with id from passed dragged_node list to index node_idx in :attr:`~LiszDataMixin.current_node`.
+
+        :param dragged_node:    node where the item to moved from.
+        :param item_id:         id of the moved item.
+        :param node_idx:        index in the node where the item has to be moved to.
+        """
+        src_idx = self.find_item_index(item_id, searched_list=dragged_node)
+        lid = dragged_node.pop(src_idx)
+        if dragged_node == self.current_node and node_idx > src_idx:
+            node_idx -= 1
+        self.current_node.insert(node_idx, lid)
+
+    def on_app_init(self):
+        """ initialize self.current_node from flow_id/flow_path saved on last app stop. """
+        self.refresh_current_node()
+
+    def on_node_jump(self, flow_id: str, _event_kwargs: dict) -> bool:
+        """ FlowButton clicked event handler restoring flow path from the flow key.
+
+        Used for to jump to node specified by the flow path text in the passed flow_id key.
+
+        :param flow_id:         jump node flow with the flow key containing the flow path text.
+        :param _event_kwargs:   event arguments (not used here).
+        :return:                True for to process/change flow.
+        """
+        flow_path = self.flow_path_from_text(flow_key(flow_id))
+
+        # cannot close popup here because the close event will be processed in the next event loop
+        # an because flow_path_from_text() is overwriting the open popup action in self.flow_path
+        # we have to re-add the latest flow id entry from the current/old flow path that opened the jumper
+        # here (for it can be removed by FlowPopup closed event handler when the jumper popup closes).
+        open_jumper_flow_id = id_of_flow('open', 'flow_path_jumper')
+        assert open_jumper_flow_id == self.flow_path[-1]
+        flow_path.append(self.flow_path[-1])
+        self.change_app_state('flow_path', flow_path)
+        self.change_app_state('flow_id', id_of_flow('', ''))
+
+        return True
+
+    def refresh_current_node(self):
+        """ refresh current node including the depending display node. """
+        self.current_node = self.flow_path_node()
+
+    def sub_item_ids(self, item_id, node_only, node=None, sub_item_ids=None):
+        """ return item names of all items including their sub-node items (if exists).
+
+        Used for to determine the affected items if user want to delete the item specified by item_id.
+
+        :param item_id:         item id of the item to be deleted.
+        :param node_only:       True if only include the item ids of the sub-nodes of the identified item.
+        :param node:            searched node, use current node if not passed (used for recursive calls of this method).
+        :param sub_item_ids:    already found sub item ids (used only for the recursive calls of this method).
+        :return:                list of found item ids.
+        """
+        if node is None:
+            node = self.current_node
+        if sub_item_ids is None:
+            sub_item_ids = list()
+
+        if not node_only:
+            sub_item_ids.append(item_id)
+
+        lid = self.item_by_id(item_id, node)
+        node = lid.get('node', list())
+        for sub_lid in node:
+            if sub_lid.get('node'):
+                self.sub_item_ids(sub_lid['id'], False, node, sub_item_ids)
+            else:
+                sub_item_ids.append(sub_lid['id'])
+
+        return sub_item_ids
+
+    def update_item_sel(self, new_sel: int, node_idx: int):
+        """ update the item selection data of the item identified by the list index in the current node.
+
+        :param new_sel:         new selection: True if selected, False if not.
+        :param node_idx:        list index of the item in the current node to change the selection for.
+        """
+        if new_sel:
+            self.current_node[node_idx]['sel'] = 1
+        else:
+            self.current_node[node_idx].pop('sel')
