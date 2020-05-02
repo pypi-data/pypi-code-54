@@ -1,0 +1,1 @@
+b=tuple('																																																																																																																																																																																			ng	g																																															e'.split('	'))
