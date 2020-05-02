@@ -1,0 +1,14 @@
+__major_version__=0
+__minor_version__=1
+__patch_version__=0
+is_beta=False
+__version__ = '0.1.0'
+version=__version__
+version_long = '0.1.0:fav_0.1.0'
+description = 'fav_0.1.0'
+commit = 'b846ad8c51ef3513d7eb007ea6fddea6d18e99b3'
+branch = 'master'
+is_dirty = False
+email ='info@frontmark.de'
+author ='favxy'
+prefix='fav'
