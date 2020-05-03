@@ -1,0 +1,2 @@
+DataID = str
+SearchID = str
