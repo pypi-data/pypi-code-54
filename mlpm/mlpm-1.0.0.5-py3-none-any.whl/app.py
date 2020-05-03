@@ -1,0 +1,11 @@
+# Copyright (c) 2020 Xiaozhe Yao & AICAMP.CO.,LTD
+# 
+# This software is released under the MIT License.
+# https://opensource.org/licenses/MIT
+#coding:utf-8
+
+from flask import Flask
+
+aidserver = Flask(__name__)
+# Explicitly declare solver in the aidserver
+aidserver.solver = None
