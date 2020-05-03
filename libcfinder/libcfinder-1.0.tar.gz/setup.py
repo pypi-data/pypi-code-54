@@ -1,0 +1,22 @@
+import setuptools
+
+with open("README.md", "r") as f:
+    long_description = f.read()
+
+setuptools.setup(
+    name='libcfinder',
+    version='1.0',
+    scripts=[],
+    author='Roberto Pettinau',
+    author_email='roberto.pettinau99@gmail.com',
+    descrption='Package for finding libc version via offsets',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    url='https://github.com/petitnau/libcfinder',
+    packages=setuptools.find_packages(),
+    include_package_data=True,
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Topic :: Security"
+    ]
+)
