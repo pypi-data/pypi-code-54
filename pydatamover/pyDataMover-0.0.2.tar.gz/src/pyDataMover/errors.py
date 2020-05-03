@@ -1,0 +1,3 @@
+
+class PyDataMoverException(Exception):
+    pass
