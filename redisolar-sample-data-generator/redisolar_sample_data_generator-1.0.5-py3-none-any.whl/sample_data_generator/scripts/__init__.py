@@ -1,0 +1,1 @@
+from sample_data_generator.scripts.compare_and_update import CompareAndUpdateScript
