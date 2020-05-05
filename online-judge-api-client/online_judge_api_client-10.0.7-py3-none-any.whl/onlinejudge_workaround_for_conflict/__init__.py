@@ -1,0 +1,4 @@
+# Python Version: 3.x
+import onlinejudge_workaround_for_conflict.dispatch
+import onlinejudge_workaround_for_conflict.service
+from onlinejudge_workaround_for_conflict.__about__ import __version__
