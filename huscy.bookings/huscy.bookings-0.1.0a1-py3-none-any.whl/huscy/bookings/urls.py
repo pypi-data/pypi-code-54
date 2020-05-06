@@ -1,0 +1,12 @@
+from rest_framework.routers import DefaultRouter
+
+from huscy.bookings import views
+
+
+router = DefaultRouter()
+router.register('timeslots', views.TimeslotViewSet)
+
+urlpatterns = [
+]
+
+urlpatterns += router.urls
