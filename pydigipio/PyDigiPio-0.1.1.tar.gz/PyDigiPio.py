@@ -1,0 +1,26 @@
+import os
+
+
+def configure_pin(pin_number: int, direction: str):
+    path = "/sys/class/gpio/gpio{}/direction".format(pin_number)
+    if not os.path.isfile(path):
+        device = os.open("/sys/class/gpio/export", os.O_WRONLY)
+        os.write(device, bytes("{}".format(pin_number), "utf-8"))
+        os.close(device)
+    device = os.open(path, os.O_WRONLY)
+    os.write(device, bytes("{}".format(direction), "utf-8"))
+    os.close(device)
+
+
+def write_to_pin(pin_number: int, value: bool):
+    device = os.open("/sys/class/gpio/gpio{}/value".format(pin_number), os.O_WRONLY)
+    os.write(device, bytes("{}".format(int(value)), "utf-8"))
+    os.close(device)
+
+
+def read_from_pin(pin_number: int) -> bool:
+    device = os.open("/sys/class/gpio/gpio{}/value".format(pin_number), os.O_RDONLY)
+    value = int(os.read(device, 1))
+    os.close(device)
+
+    return value == 1
