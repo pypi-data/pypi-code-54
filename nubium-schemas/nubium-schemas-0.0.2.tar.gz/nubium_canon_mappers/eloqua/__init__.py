@@ -1,0 +1,1 @@
+from nubium_canon_mappers.eloqua.mappers import get_eloqua_records_mapper_for_canon, get_canon_schema
